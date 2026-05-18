@@ -1,16 +1,18 @@
 const { Telegraf } = require("telegraf");
 const { createClient } = require("@supabase/supabase-js");
-const axios = require("axios");
 const express = require("express");
 require("dotenv").config();
 
-// ===== ENV =====
+// ===== BOT + SUPABASE =====
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN);
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_KEY
 );
+
+// ===== STATE =====
+const userState = new Map();
 
 // ===== EXPRESS (Render fix) =====
 const app = express();
@@ -21,31 +23,86 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-// ===== HEALTH =====
-console.log("BOT BUILDER STARTED");
+// ===== TOKEN VALIDATION =====
+function isValidToken(token) {
+  return /^[0-9]{8,10}:[A-Za-z0-9_-]{30,}$/.test(token);
+}
 
-// ===== CREATE BOT =====
-bot.command("newbot", async (ctx) => {
-  const text = ctx.message.text.replace("/newbot", "").trim();
-  const [name, token] = text.split("|");
+// ===== START =====
+bot.start((ctx) => {
+  ctx.reply("бот-конструктор запущен. команды: /newbot /bots /use /cancel");
+});
 
-  if (!name || !token) {
-    return ctx.reply("формат: /newbot name|token");
-  }
+// ===== CANCEL =====
+bot.command("cancel", (ctx) => {
+  userState.delete(ctx.from.id);
+  ctx.reply("❌ отменено");
+});
 
-  const { error } = await supabase.from("bots").insert({
-    name: name.trim(),
-    token: token.trim(),
-    owner_id: String(ctx.from.id),
-    prompt: "ты полезный AI ассистент"
+bot.action("cancel", (ctx) => {
+  userState.delete(ctx.from.id);
+  ctx.answerCbQuery();
+  ctx.reply("❌ отменено");
+});
+
+// ===== NEWBOT (STEP 1) =====
+bot.command("newbot", (ctx) => {
+  userState.set(ctx.from.id, { step: "name" });
+
+  ctx.reply("введи имя нового бота:", {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "❌ Отмена", callback_data: "cancel" }]
+      ]
+    }
   });
+});
 
-  if (error) {
-    console.log(error);
-    return ctx.reply("ошибка создания бота");
+// ===== TEXT HANDLER (STEPS) =====
+bot.on("text", async (ctx) => {
+  const state = userState.get(ctx.from.id);
+  const text = ctx.message.text;
+
+  // если нет режима — игнор
+  if (!state) {
+    return ctx.reply("используй /newbot или /bots");
   }
 
-  ctx.reply(`бот "${name}" создан`);
+  // ===== STEP 1: NAME =====
+  if (state.step === "name") {
+    state.name = text;
+    state.step = "token";
+
+    userState.set(ctx.from.id, state);
+
+    return ctx.reply("теперь отправь токен бота:");
+  }
+
+  // ===== STEP 2: TOKEN =====
+  if (state.step === "token") {
+
+    if (!isValidToken(text)) {
+      return ctx.reply("❌ это не похоже на Telegram token");
+    }
+
+    state.token = text;
+
+    const { error } = await supabase.from("bots").insert({
+      name: state.name,
+      token: state.token,
+      owner_id: String(ctx.from.id),
+      prompt: "ты полезный AI ассистент"
+    });
+
+    userState.delete(ctx.from.id);
+
+    if (error) {
+      console.log(error);
+      return ctx.reply("ошибка создания бота");
+    }
+
+    return ctx.reply(`бот "${state.name}" создан`);
+  }
 });
 
 // ===== LIST BOTS =====
@@ -55,20 +112,19 @@ bot.command("bots", async (ctx) => {
     .select("*")
     .eq("owner_id", String(ctx.from.id));
 
-  if (error) {
-    console.log(error);
-    return ctx.reply("ошибка");
-  }
+  if (error) return ctx.reply("ошибка загрузки");
 
   if (!data || data.length === 0) {
     return ctx.reply("ботов нет");
   }
 
-  const list = data.map(b => `• ${b.name}`).join("\n");
-  ctx.reply("твои боты:\n" + list);
+  ctx.reply(
+    "твои боты:\n" +
+    data.map(b => `• ${b.name}`).join("\n")
+  );
 });
 
-// ===== SET ACTIVE BOT =====
+// ===== USE BOT =====
 bot.command("use", async (ctx) => {
   const name = ctx.message.text.replace("/use", "").trim();
 
@@ -90,16 +146,16 @@ bot.command("use", async (ctx) => {
   ctx.reply(`активный бот: ${name}`);
 });
 
-// ===== DEFAULT MESSAGE =====
+// ===== DEFAULT =====
 bot.on("text", (ctx) => {
   ctx.reply("команды: /newbot /bots /use");
 });
 
-// ===== START =====
+// ===== START BOT =====
 bot.launch();
-console.log("TELEGRAM READY");
+console.log("BOT BUILDER RUNNING");
 
-// ===== EXPRESS START =====
+// ===== SERVER =====
 app.listen(PORT, () => {
   console.log("HTTP SERVER ON PORT", PORT);
 });
