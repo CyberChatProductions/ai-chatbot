@@ -23,13 +23,13 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-// ================= AI =================
+// ================= GROQ AI =================
 async function askAI(prompt, message) {
   try {
     const res = await axios.post(
       "https://api.groq.com/openai/v1/chat/completions",
       {
-        model: "llama3-8b-8192",
+        model: "llama-3.3-70b-versatile",
         messages: [
           { role: "system", content: prompt },
           { role: "user", content: message }
@@ -48,13 +48,13 @@ async function askAI(prompt, message) {
     return res.data.choices[0].message.content;
   } catch (e) {
     console.log("AI ERROR:", e?.response?.data || e.message);
-    return "ошибка AI";
+    return "❌ ошибка AI";
   }
 }
 
 // ================= HOME =================
 function home(ctx) {
-  ctx.reply("🏠 конструктор:", {
+  ctx.reply("🏠 конструктор ботов:", {
     reply_markup: {
       inline_keyboard: [
         [{ text: "🤖 мои боты", callback_data: "bots" }],
@@ -79,13 +79,15 @@ async function showBots(ctx) {
     .select("*")
     .eq("owner_id", String(ctx.from.id));
 
-  if (!data?.length) return ctx.reply("ботов нет");
+  if (!data?.length) {
+    return ctx.reply("ботов пока нет");
+  }
 
   ctx.reply("🤖 твои боты:", {
     reply_markup: {
       inline_keyboard: [
         ...data.map(b => [
-          { text: b.name, callback_data: `bot_${b.id}` }
+          { text: `• ${b.name}`, callback_data: `bot_${b.id}` }
         ]),
         [{ text: "⬅️ назад", callback_data: "home" }]
       ]
@@ -113,6 +115,7 @@ bot.on("callback_query", async (ctx) => {
     return ctx.reply("введи имя бота:");
   }
 
+  // ================= BOT PANEL =================
   if (d.startsWith("bot_")) {
     const id = d.split("_")[1];
 
@@ -122,7 +125,7 @@ bot.on("callback_query", async (ctx) => {
       .eq("id", id)
       .single();
 
-    if (!data) return ctx.reply("нет бота");
+    if (!data) return ctx.reply("бот не найден");
 
     ctx.reply(`⚙️ ${data.name}`, {
       reply_markup: {
@@ -136,6 +139,7 @@ bot.on("callback_query", async (ctx) => {
     });
   }
 
+  // ================= ACTIVATE BOT =================
   if (d.startsWith("use_")) {
     const id = d.split("_")[1];
 
@@ -147,6 +151,7 @@ bot.on("callback_query", async (ctx) => {
     return ctx.reply("✅ бот активирован");
   }
 
+  // ================= VIEW PROMPT =================
   if (d.startsWith("prompt_")) {
     const id = d.split("_")[1];
 
@@ -165,6 +170,7 @@ bot.on("callback_query", async (ctx) => {
     });
   }
 
+  // ================= EDIT PROMPT =================
   if (d.startsWith("edit_")) {
     const id = d.split("_")[1];
 
@@ -180,30 +186,29 @@ bot.on("callback_query", async (ctx) => {
 // ================= TEXT ROUTER =================
 bot.on("text", async (ctx) => {
   const text = ctx.message.text;
+  const state = userState.get(ctx.from.id);
 
-  // ================= AI MODE (ПРИОРИТЕТ №1) =================
+  // ================= AI MODE (PRIORITY) =================
   const { data: active } = await supabase
     .from("active_bot")
     .select("*")
     .eq("user_id", String(ctx.from.id))
     .single();
 
-  if (active) {
+  if (active?.bot_id) {
     const { data: botData } = await supabase
       .from("bots")
       .select("*")
       .eq("id", active.bot_id)
       .single();
 
-    if (botData) {
+    if (botData?.prompt) {
       const answer = await askAI(botData.prompt, text);
       return ctx.reply(answer);
     }
   }
 
   // ================= CONSTRUCTOR FLOW =================
-  const state = userState.get(ctx.from.id);
-
   if (state?.step === "name") {
     state.name = text;
     state.step = "token";
