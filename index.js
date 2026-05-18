@@ -1,79 +1,105 @@
 const { Telegraf } = require("telegraf");
+const { createClient } = require("@supabase/supabase-js");
 const axios = require("axios");
 const express = require("express");
 require("dotenv").config();
 
-// ===== ENV CHECK (ВАЖНО) =====
-console.log("ENV CHECK:", {
-  tg: process.env.TELEGRAM_TOKEN ? "OK" : "MISSING",
-  groq: process.env.GROQ_KEY ? "OK" : "MISSING"
-});
+// ===== ENV =====
+const bot = new Telegraf(process.env.TELEGRAM_TOKEN);
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
 
 // ===== EXPRESS (Render fix) =====
 const app = express();
 
 app.get("/", (req, res) => {
-  res.send("bot alive");
+  res.send("bot builder alive");
 });
 
 const PORT = process.env.PORT || 3000;
 
-// ===== TELEGRAM BOT =====
-const bot = new Telegraf(process.env.TELEGRAM_TOKEN);
+// ===== HEALTH =====
+console.log("BOT BUILDER STARTED");
 
-// ===== SYSTEM PROMPT =====
-const SYSTEM_PROMPT = `
-Ты AI ассистент.
-Отвечаешь кратко, по делу.
-Без лишней воды.
-Иногда лёгкая ирония.
-Эмодзи используешь умеренно.
-`;
+// ===== CREATE BOT =====
+bot.command("newbot", async (ctx) => {
+  const text = ctx.message.text.replace("/newbot", "").trim();
+  const [name, token] = text.split("|");
 
-// ===== GROQ REQUEST =====
-async function askAI(message) {
-  try {
-    const res = await axios.post(
-      "https://api.groq.com/openai/v1/chat/completions",
-      {
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: message }
-        ]
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.GROQ_KEY}`,
-          "Content-Type": "application/json"
-        }
-      }
-    );
-
-    return res.data.choices[0].message.content;
-
-  } catch (err) {
-    console.log("GROQ ERROR:", err.response?.data || err.message);
-    return "ошибка AI";
+  if (!name || !token) {
+    return ctx.reply("формат: /newbot name|token");
   }
-}
 
-// ===== TELEGRAM EVENTS =====
-bot.start((ctx) => {
-  ctx.reply("бот жив");
+  const { error } = await supabase.from("bots").insert({
+    name: name.trim(),
+    token: token.trim(),
+    owner_id: String(ctx.from.id),
+    prompt: "ты полезный AI ассистент"
+  });
+
+  if (error) {
+    console.log(error);
+    return ctx.reply("ошибка создания бота");
+  }
+
+  ctx.reply(`бот "${name}" создан`);
 });
 
-bot.on("text", async (ctx) => {
-  const text = ctx.message.text;
-  const reply = await askAI(text);
-  ctx.reply(reply);
+// ===== LIST BOTS =====
+bot.command("bots", async (ctx) => {
+  const { data, error } = await supabase
+    .from("bots")
+    .select("*")
+    .eq("owner_id", String(ctx.from.id));
+
+  if (error) {
+    console.log(error);
+    return ctx.reply("ошибка");
+  }
+
+  if (!data || data.length === 0) {
+    return ctx.reply("ботов нет");
+  }
+
+  const list = data.map(b => `• ${b.name}`).join("\n");
+  ctx.reply("твои боты:\n" + list);
 });
 
-// ===== START BOT =====
+// ===== SET ACTIVE BOT =====
+bot.command("use", async (ctx) => {
+  const name = ctx.message.text.replace("/use", "").trim();
+
+  const { data } = await supabase
+    .from("bots")
+    .select("*")
+    .eq("name", name)
+    .single();
+
+  if (!data) {
+    return ctx.reply("бот не найден");
+  }
+
+  await supabase.from("active_bot").upsert({
+    user_id: String(ctx.from.id),
+    bot_id: data.id
+  });
+
+  ctx.reply(`активный бот: ${name}`);
+});
+
+// ===== DEFAULT MESSAGE =====
+bot.on("text", (ctx) => {
+  ctx.reply("команды: /newbot /bots /use");
+});
+
+// ===== START =====
 bot.launch();
-console.log("AI BOT RUNNING");
+console.log("TELEGRAM READY");
 
-// ===== START SERVER (Render requirement) =====
+// ===== EXPRESS START =====
 app.listen(PORT, () => {
   console.log("HTTP SERVER ON PORT", PORT);
 });
