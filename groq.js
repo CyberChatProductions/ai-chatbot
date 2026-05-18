@@ -3,9 +3,9 @@ const { GROQ_KEY } = require("./config");
 
 async function askGroq(messages) {
   const res = await axios.post(
-    "openai/gpt-oss-20b",
+    "https://api.groq.com/openai/v1/chat/completions",
     {
-      model: "llama3-8b-8192",
+      model: "openai/gpt-oss-20b",
       messages,
       temperature: 0.8,
       max_tokens: 500
