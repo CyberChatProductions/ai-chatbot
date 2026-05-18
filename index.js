@@ -23,8 +23,8 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-// ================= GROQ =================
-async function askAI(prompt, userMessage) {
+// ================= AI =================
+async function askAI(prompt, message) {
   try {
     const res = await axios.post(
       "https://api.groq.com/openai/v1/chat/completions",
@@ -32,7 +32,7 @@ async function askAI(prompt, userMessage) {
         model: "llama3-8b-8192",
         messages: [
           { role: "system", content: prompt },
-          { role: "user", content: userMessage }
+          { role: "user", content: message }
         ],
         temperature: 0.7,
         max_tokens: 500
@@ -54,7 +54,7 @@ async function askAI(prompt, userMessage) {
 
 // ================= HOME =================
 function home(ctx) {
-  ctx.reply("🏠 меню конструктора:", {
+  ctx.reply("🏠 конструктор:", {
     reply_markup: {
       inline_keyboard: [
         [{ text: "🤖 мои боты", callback_data: "bots" }],
@@ -72,16 +72,14 @@ function isValidToken(t) {
   return /^[0-9]{8,10}:[A-Za-z0-9_-]{30,}$/.test(t);
 }
 
-// ================= LIST BOTS =================
+// ================= BOT LIST =================
 async function showBots(ctx) {
   const { data } = await supabase
     .from("bots")
     .select("*")
     .eq("owner_id", String(ctx.from.id));
 
-  if (!data?.length) {
-    return ctx.reply("ботов нет");
-  }
+  if (!data?.length) return ctx.reply("ботов нет");
 
   ctx.reply("🤖 твои боты:", {
     reply_markup: {
@@ -97,111 +95,11 @@ async function showBots(ctx) {
 
 bot.command("bots", showBots);
 
-// ================= NEW BOT FLOW =================
+// ================= NEW BOT =================
 bot.command("newbot", (ctx) => {
   userState.set(ctx.from.id, { step: "name" });
   ctx.reply("введи имя бота:");
 });
-
-// ================= TEXT ROUTER =================
-bot.on("text", async (ctx) => {
-  const state = userState.get(ctx.from.id);
-  const text = ctx.message.text;
-
-  // ================= CREATE BOT =================
-  if (state?.step === "name") {
-    state.name = text;
-    state.step = "token";
-    userState.set(ctx.from.id, state);
-
-    return ctx.reply("теперь отправь токен:");
-  }
-
-  if (state?.step === "token") {
-    if (!isValidToken(text)) {
-      return ctx.reply("❌ неверный токен");
-    }
-
-    const { error } = await supabase.from("bots").insert({
-      name: state.name,
-      token: text,
-      owner_id: String(ctx.from.id),
-      prompt: "ты полезный AI ассистент"
-    });
-
-    userState.delete(ctx.from.id);
-
-    if (error) {
-      console.log(error);
-      return ctx.reply("ошибка создания");
-    }
-
-    return ctx.reply("✅ бот создан");
-  }
-
-  // ================= EDIT PROMPT =================
-  if (state?.step === "edit_prompt") {
-    const { error } = await supabase
-      .from("bots")
-      .update({ prompt: text })
-      .eq("id", state.botId);
-
-    userState.delete(ctx.from.id);
-
-    if (error) {
-      console.log(error);
-      return ctx.reply("ошибка обновления prompt");
-    }
-
-    return ctx.reply("✅ prompt обновлён");
-  }
-
-  // ================= AI MODE =================
-  const { data: active } = await supabase
-    .from("active_bot")
-    .select("*")
-    .eq("user_id", String(ctx.from.id))
-    .single();
-
-  if (!active) {
-    return ctx.reply("используй /menu");
-  }
-
-  const { data: botData } = await supabase
-    .from("bots")
-    .select("*")
-    .eq("id", active.bot_id)
-    .single();
-
-  if (!botData) {
-    return ctx.reply("бот не найден");
-  }
-
-  const answer = await askAI(botData.prompt, text);
-  return ctx.reply(answer);
-});
-
-// ================= BOT PANEL =================
-async function botPanel(ctx, id) {
-  const { data } = await supabase
-    .from("bots")
-    .select("*")
-    .eq("id", id)
-    .single();
-
-  if (!data) return ctx.reply("бот не найден");
-
-  ctx.reply(`⚙️ ${data.name}`, {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "🧠 prompt", callback_data: `prompt_${id}` }],
-        [{ text: "✏️ изменить prompt", callback_data: `edit_${id}` }],
-        [{ text: "🧪 использовать", callback_data: `use_${id}` }],
-        [{ text: "⬅️ назад", callback_data: "bots" }]
-      ]
-    }
-  });
-}
 
 // ================= CALLBACKS =================
 bot.on("callback_query", async (ctx) => {
@@ -216,7 +114,26 @@ bot.on("callback_query", async (ctx) => {
   }
 
   if (d.startsWith("bot_")) {
-    return botPanel(ctx, d.split("_")[1]);
+    const id = d.split("_")[1];
+
+    const { data } = await supabase
+      .from("bots")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (!data) return ctx.reply("нет бота");
+
+    ctx.reply(`⚙️ ${data.name}`, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "🧠 prompt", callback_data: `prompt_${id}` }],
+          [{ text: "✏️ изменить prompt", callback_data: `edit_${id}` }],
+          [{ text: "🧪 активировать", callback_data: `use_${id}` }],
+          [{ text: "⬅️ назад", callback_data: "bots" }]
+        ]
+      }
+    });
   }
 
   if (d.startsWith("use_")) {
@@ -258,6 +175,81 @@ bot.on("callback_query", async (ctx) => {
 
     return ctx.reply("✏️ отправь новый prompt:");
   }
+});
+
+// ================= TEXT ROUTER =================
+bot.on("text", async (ctx) => {
+  const text = ctx.message.text;
+
+  // ================= AI MODE (ПРИОРИТЕТ №1) =================
+  const { data: active } = await supabase
+    .from("active_bot")
+    .select("*")
+    .eq("user_id", String(ctx.from.id))
+    .single();
+
+  if (active) {
+    const { data: botData } = await supabase
+      .from("bots")
+      .select("*")
+      .eq("id", active.bot_id)
+      .single();
+
+    if (botData) {
+      const answer = await askAI(botData.prompt, text);
+      return ctx.reply(answer);
+    }
+  }
+
+  // ================= CONSTRUCTOR FLOW =================
+  const state = userState.get(ctx.from.id);
+
+  if (state?.step === "name") {
+    state.name = text;
+    state.step = "token";
+    userState.set(ctx.from.id, state);
+    return ctx.reply("теперь отправь токен:");
+  }
+
+  if (state?.step === "token") {
+    if (!isValidToken(text)) {
+      return ctx.reply("❌ неверный токен");
+    }
+
+    const { error } = await supabase.from("bots").insert({
+      name: state.name,
+      token: text,
+      owner_id: String(ctx.from.id),
+      prompt: "ты полезный AI ассистент"
+    });
+
+    userState.delete(ctx.from.id);
+
+    if (error) {
+      console.log(error);
+      return ctx.reply("ошибка создания бота");
+    }
+
+    return ctx.reply("✅ бот создан");
+  }
+
+  if (state?.step === "edit_prompt") {
+    const { error } = await supabase
+      .from("bots")
+      .update({ prompt: text })
+      .eq("id", state.botId);
+
+    userState.delete(ctx.from.id);
+
+    if (error) {
+      console.log(error);
+      return ctx.reply("ошибка обновления prompt");
+    }
+
+    return ctx.reply("✅ prompt обновлён");
+  }
+
+  return ctx.reply("используй /menu");
 });
 
 // ================= START =================
