@@ -3,7 +3,7 @@ const { GROQ_KEY } = require("./config");
 
 async function askGroq(messages) {
   const res = await axios.post(
-    "https://api.groq.com/openai/v1/chat/completions",
+    "openai/gpt-oss-20b",
     {
       model: "llama3-8b-8192",
       messages,
