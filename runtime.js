@@ -1,108 +1,137 @@
 const { Telegraf } = require("telegraf");
+const { createClient } = require("@supabase/supabase-js");
 const askGroq = require("./groq");
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
 
 const launchedBots = new Map();
 
+// ================= LAUNCH =================
 async function launchBot(botData) {
 
-  // ================= ANTI DUPLICATE =================
-  if (launchedBots.has(botData.token)) {
-    return;
-  }
+  if (launchedBots.has(botData.token)) return;
 
   const bot = new Telegraf(botData.token);
 
-  // ================= BOT INFO =================
   const me = await bot.telegram.getMe();
 
-  console.log(`🤖 launched: @${me.username}`);
+  console.log(`🤖 @${me.username} launched`);
 
-  // ================= AI HANDLER =================
-  bot.on("text", async (ctx) => {
+  // ================= HANDLER =================
+  bot.on(["text", "photo", "animation", "sticker"], async (ctx) => {
 
     try {
 
-      const text = ctx.message.text || "";
+      // ================= CHECK ENABLED =================
+      const { data: fresh } = await supabase
+        .from("bots")
+        .select("enabled, prompt")
+        .eq("id", botData.id)
+        .single();
 
-      // ================= CHAT TYPE =================
-      const isGroup =
-        ctx.chat.type.includes("group");
+      if (!fresh?.enabled) return;
 
-      // ================= REPLY =================
+      let userMessage = "";
+
+      // ================= TEXT =================
+      if (ctx.message.text) {
+        userMessage = ctx.message.text;
+      }
+
+      // ================= PHOTO =================
+      if (ctx.message.photo) {
+
+        const caption = ctx.message.caption || "";
+
+        const file = ctx.message.photo.at(-1);
+        const fileLink = await ctx.telegram.getFileLink(file.file_id);
+
+        userMessage = `
+[PHOTO]
+caption: ${caption || "none"}
+url: ${fileLink.href}
+`;
+      }
+
+      // ================= GIF =================
+      if (ctx.message.animation) {
+
+        const caption = ctx.message.caption || "";
+
+        const fileLink = await ctx.telegram.getFileLink(
+          ctx.message.animation.file_id
+        );
+
+        userMessage = `
+[GIF]
+caption: ${caption || "none"}
+url: ${fileLink.href}
+`;
+      }
+
+      // ================= STICKER =================
+      if (ctx.message.sticker) {
+
+        const s = ctx.message.sticker;
+
+        userMessage = `
+[STICKER]
+emoji: ${s.emoji || "none"}
+set: ${s.set_name || "unknown"}
+animated: ${s.is_animated}
+file_id: ${s.file_id}
+`;
+      }
+
+      const text = userMessage;
+
+      // ================= GROUP LOGIC =================
+      const isGroup = ctx.chat.type.includes("group");
+
       const isReply =
         ctx.message.reply_to_message?.from?.username === me.username;
 
-      // ================= MENTION =================
       const isMention =
-        text
-          .toLowerCase()
-          .includes(`@${me.username.toLowerCase()}`);
+        text.toLowerCase().includes(`@${me.username.toLowerCase()}`);
 
-      // ================= RANDOM MESSAGE =================
-      const randomReply =
-        Math.random() < 0.15;
+      const randomReply = Math.random() < 0.15;
 
-      // ================= GROUP FILTER =================
-      if (isGroup) {
-
-        if (
-          !isReply &&
-          !isMention &&
-          !randomReply
-        ) {
-          return;
-        }
+      if (isGroup && !isReply && !isMention && !randomReply) {
+        return;
       }
 
-      // ================= TYPING =================
       await ctx.sendChatAction("typing");
-
-      // ================= CLEAN TEXT =================
-      const cleanedText = text
-        .replace(`@${me.username}`, "")
-        .trim();
 
       // ================= AI =================
       const reply = await askGroq(
-        cleanedText,
+        text,
         `
-${botData.prompt || ""}
+${fresh.prompt || ""}
 
-Дополнительные правила:
+ВАЖНО:
 - отвечай как живой человек
-- сообщения должны быть средней длины
-- не пиши огромные полотна текста
-- чаще отвечай кратко или средне
-- пиши естественно
-- избегай формального стиля
-- не используй нумерованные списки без причины
-- не говори что ты ИИ
+- ответы должны быть средними по длине
+- не делай огромные тексты
+- будь естественным
+- учитывай что это Telegram чат
 `
       );
 
-      // ================= SEND =================
       await ctx.reply(reply);
 
     } catch (err) {
-
       console.log("RUNTIME ERROR:", err);
-
-      try {
-        await ctx.reply("Ошибка AI");
-      } catch {}
     }
   });
 
-  // ================= START =================
   bot.launch({
     dropPendingUpdates: true
   });
 
-  // ================= SAVE =================
-  launchedBots.set(
-    botData.token,
-    bot
-  );
+  launchedBots.set(botData.token, bot);
 }
 
 module.exports = {
