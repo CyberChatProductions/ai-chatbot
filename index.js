@@ -26,6 +26,7 @@ const PORT = process.env.PORT || 3000;
 // ================= GROQ AI =================
 async function askAI(prompt, message) {
   try {
+      console.log("MODEL:", "llama-3.3-70b-versatile");
     const res = await axios.post(
       "https://api.groq.com/openai/v1/chat/completions",
       {
