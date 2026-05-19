@@ -1,83 +1,108 @@
 const { Telegraf } = require("telegraf");
-const axios = require("axios");
+const askGroq = require("./groq");
 
-const runningBots = new Map();
-
-async function askAI(prompt, message) {
-  try {
-    const res = await axios.post(
-      "https://api.groq.com/openai/v1/chat/completions",
-      {
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          {
-            role: "system",
-            content: prompt
-          },
-          {
-            role: "user",
-            content: message
-          }
-        ],
-        temperature: 0.7,
-        max_tokens: 500
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.GROQ_KEY}`,
-          "Content-Type": "application/json"
-        }
-      }
-    );
-
-    return res.data.choices[0].message.content;
-
-  } catch (e) {
-
-    console.log("AI ERROR:", e?.response?.data || e.message);
-
-    return "❌ ошибка AI";
-  }
-}
+const launchedBots = new Map();
 
 async function launchBot(botData) {
 
-  if (runningBots.has(botData.id)) {
+  // ================= ANTI DUPLICATE =================
+  if (launchedBots.has(botData.token)) {
     return;
   }
 
-  try {
+  const bot = new Telegraf(botData.token);
 
-    const tgBot = new Telegraf(botData.token);
+  // ================= BOT INFO =================
+  const me = await bot.telegram.getMe();
 
-    tgBot.start((ctx) => {
-      ctx.reply(`🤖 ${botData.name} активен`);
-    });
+  console.log(`🤖 launched: @${me.username}`);
 
-    tgBot.on("text", async (ctx) => {
+  // ================= AI HANDLER =================
+  bot.on("text", async (ctx) => {
 
-      const text = ctx.message.text;
+    try {
 
-      const answer = await askAI(
-        botData.prompt || "ты AI ассистент",
+      const text = ctx.message.text || "";
+
+      // ================= CHAT TYPE =================
+      const isGroup =
+        ctx.chat.type.includes("group");
+
+      // ================= REPLY =================
+      const isReply =
+        ctx.message.reply_to_message?.from?.username === me.username;
+
+      // ================= MENTION =================
+      const isMention =
         text
+          .toLowerCase()
+          .includes(`@${me.username.toLowerCase()}`);
+
+      // ================= RANDOM MESSAGE =================
+      const randomReply =
+        Math.random() < 0.15;
+
+      // ================= GROUP FILTER =================
+      if (isGroup) {
+
+        if (
+          !isReply &&
+          !isMention &&
+          !randomReply
+        ) {
+          return;
+        }
+      }
+
+      // ================= TYPING =================
+      await ctx.sendChatAction("typing");
+
+      // ================= CLEAN TEXT =================
+      const cleanedText = text
+        .replace(`@${me.username}`, "")
+        .trim();
+
+      // ================= AI =================
+      const reply = await askGroq(
+        cleanedText,
+        `
+${botData.prompt || ""}
+
+Дополнительные правила:
+- отвечай как живой человек
+- сообщения должны быть средней длины
+- не пиши огромные полотна текста
+- чаще отвечай кратко или средне
+- пиши естественно
+- избегай формального стиля
+- не используй нумерованные списки без причины
+- не говори что ты ИИ
+`
       );
 
-      ctx.reply(answer);
-    });
+      // ================= SEND =================
+      await ctx.reply(reply);
 
-    tgBot.launch({
-      dropPendingUpdates: true
-    });
+    } catch (err) {
 
-    runningBots.set(botData.id, tgBot);
+      console.log("RUNTIME ERROR:", err);
 
-    console.log("STARTED BOT:", botData.name);
+      try {
+        await ctx.reply("Ошибка AI");
+      } catch {}
+    }
+  });
 
-  } catch (e) {
+  // ================= START =================
+  bot.launch({
+    dropPendingUpdates: true
+  });
 
-    console.log("BOT START ERROR:", e.message);
-  }
+  // ================= SAVE =================
+  launchedBots.set(
+    botData.token,
+    bot
+  );
 }
 
 module.exports = {
