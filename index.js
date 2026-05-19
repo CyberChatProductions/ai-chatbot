@@ -310,3 +310,27 @@ app.listen(PORT, () => {
     PORT
   );
 });
+
+
+const axios = require("axios");
+
+const URL = process.env.RENDER_URL || "https://ai-chatbot-m5kg.onrender.com";
+
+// пинг каждые 10 минут
+setInterval(async () => {
+  const hour = new Date().getHours();
+
+  // ночной режим (сервер не трогаем)
+  if (hour >= 2 && hour < 7) {
+    console.log("🌙 sleep window (no ping)");
+    return;
+  }
+
+  try {
+    await axios.get(URL);
+    console.log("💓 keepalive ping");
+  } catch (e) {
+    console.log("ping error");
+  }
+
+}, 10 * 60 * 1000);
