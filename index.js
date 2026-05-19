@@ -24,6 +24,7 @@ app.get("/", (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 // ================= GROQ AI =================
+console.log("ASK AI START");
 async function askAI(prompt, message) {
   try {
       console.log("MODEL:", "llama-3.3-70b-versatile");
