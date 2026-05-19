@@ -311,26 +311,28 @@ app.listen(PORT, () => {
   );
 });
 
-
+//==============RENDER KEEP-ALIVE============
 const axios = require("axios");
 
-const URL = process.env.RENDER_URL || "https://ai-chatbot-m5kg.onrender.com";
+const RENDER_URL = process.env.RENDER_URL || "https://ai-chatbot-m5kg.onrender.com";
 
-// пинг каждые 10 минут
-setInterval(async () => {
+function isSleepTime() {
   const hour = new Date().getHours();
+  return hour >= 2 && hour < 7;
+}
 
-  // ночной режим (сервер не трогаем)
-  if (hour >= 2 && hour < 7) {
-    console.log("🌙 sleep window (no ping)");
+setInterval(async () => {
+
+  if (isSleepTime()) {
+    console.log("🌙 sleep mode (2:00–7:00)");
     return;
   }
 
   try {
-    await axios.get(URL);
-    console.log("💓 keepalive ping");
-  } catch (e) {
+    await axios.get(RENDER_URL);
+    console.log("💓 keepalive 40s");
+  } catch (err) {
     console.log("ping error");
   }
 
-}, 10 * 60 * 1000);
+}, 40 * 1000);
