@@ -1,6 +1,8 @@
 const { Telegraf } = require("telegraf");
 const { createClient } = require("@supabase/supabase-js");
 const express = require("express");
+const axios = require("axios");
+
 require("dotenv").config();
 
 const { launchBot } = require("./runtime");
@@ -27,14 +29,27 @@ const PORT = process.env.PORT || 3000;
 // ================= HOME =================
 function home(ctx) {
 
-  ctx.reply("🏠 конструктор:", {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "🤖 мои боты", callback_data: "bots" }],
-        [{ text: "➕ создать бота", callback_data: "newbot" }]
-      ]
+  ctx.reply(
+    "🏠 конструктор ботов",
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "🤖 мои боты",
+              callback_data: "bots"
+            }
+          ],
+          [
+            {
+              text: "➕ создать бота",
+              callback_data: "newbot"
+            }
+          ]
+        ]
+      }
     }
-  });
+  );
 }
 
 bot.start(home);
@@ -58,32 +73,40 @@ async function showBots(ctx) {
     return ctx.reply("ботов нет");
   }
 
-  ctx.reply("🤖 твои боты:", {
-    reply_markup: {
-      inline_keyboard: [
-        ...data.map(b => [
-          {
-            text: b.name,
-            callback_data: `bot_${b.id}`
-          }
-        ]),
-        [
-          {
-            text: "⬅️ назад",
-            callback_data: "home"
-          }
+  ctx.reply(
+    "🤖 твои боты:",
+    {
+      reply_markup: {
+        inline_keyboard: [
+
+          ...data.map(b => [
+            {
+              text: b.name,
+              callback_data: `bot_${b.id}`
+            }
+          ]),
+
+          [
+            {
+              text: "⬅️ назад",
+              callback_data: "home"
+            }
+          ]
         ]
-      ]
+      }
     }
-  });
+  );
 }
 
 // ================= NEW BOT =================
 bot.command("newbot", (ctx) => {
 
-  userState.set(ctx.from.id, {
-    step: "name"
-  });
+  userState.set(
+    ctx.from.id,
+    {
+      step: "name"
+    }
+  );
 
   ctx.reply("введи имя бота:");
 });
@@ -106,9 +129,12 @@ bot.on("callback_query", async (ctx) => {
   // ================= NEW BOT =================
   if (d === "newbot") {
 
-    userState.set(ctx.from.id, {
-      step: "name"
-    });
+    userState.set(
+      ctx.from.id,
+      {
+        step: "name"
+      }
+    );
 
     return ctx.reply("введи имя бота:");
   }
@@ -141,12 +167,6 @@ bot.on("callback_query", async (ctx) => {
             ],
             [
               {
-                text: "🚀 запустить",
-                callback_data: `launch_${id}`
-              }
-            ],
-            [
-              {
                 text: "⬅️ назад",
                 callback_data: "bots"
               }
@@ -157,7 +177,7 @@ bot.on("callback_query", async (ctx) => {
     );
   }
 
-  // ================= VIEW PROMPT =================
+  // ================= PROMPT =================
   if (d.startsWith("prompt_")) {
 
     const id = d.split("_")[1];
@@ -169,7 +189,7 @@ bot.on("callback_query", async (ctx) => {
       .single();
 
     return ctx.reply(
-      `🧠 prompt:\n\n${data.prompt}`,
+      `🧠 текущий prompt:\n\n${data.prompt}`,
       {
         reply_markup: {
           inline_keyboard: [
@@ -196,34 +216,17 @@ bot.on("callback_query", async (ctx) => {
 
     const id = d.split("_")[1];
 
-    userState.set(ctx.from.id, {
-      step: "edit_prompt",
-      botId: id
-    });
+    userState.set(
+      ctx.from.id,
+      {
+        step: "edit_prompt",
+        botId: id
+      }
+    );
 
     return ctx.reply(
       "✏️ отправь новый prompt:"
     );
-  }
-
-  // ================= LAUNCH BOT =================
-  if (d.startsWith("launch_")) {
-
-    const id = d.split("_")[1];
-
-    const { data } = await supabase
-      .from("bots")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (!data) {
-      return ctx.reply("бот не найден");
-    }
-
-    await launchBot(data);
-
-    return ctx.reply("✅ бот запущен");
   }
 });
 
@@ -240,11 +243,17 @@ bot.on("text", async (ctx) => {
     state.name = text;
     state.step = "token";
 
-    userState.set(ctx.from.id, state);
+    userState.set(
+      ctx.from.id,
+      state
+    );
 
-    return ctx.reply("теперь отправь токен бота:");
+    return ctx.reply(
+      "теперь отправь токен бота:"
+    );
   }
 
+  // ================= TOKEN =================
   if (state?.step === "token") {
 
     if (!isValidToken(text)) {
@@ -257,19 +266,42 @@ bot.on("text", async (ctx) => {
         name: state.name,
         token: text,
         owner_id: String(ctx.from.id),
-        prompt: "ты полезный AI ассистент"
-      });
 
-    userState.delete(ctx.from.id);
+        prompt: `
+живой человек из интернета,
+общается естественно,
+не говорит что он ии,
+неформальный стиль,
+может шутить,
+не пишет как саппорт
+`
+      });
 
     if (error) {
 
       console.log(error);
 
-      return ctx.reply("ошибка создания бота");
+      userState.delete(ctx.from.id);
+
+      return ctx.reply(
+        "ошибка создания бота"
+      );
     }
 
-    return ctx.reply("✅ бот создан");
+    // ================= AUTO LAUNCH =================
+    const { data: newBot } = await supabase
+      .from("bots")
+      .select("*")
+      .eq("token", text)
+      .single();
+
+    await launchBot(newBot);
+
+    userState.delete(ctx.from.id);
+
+    return ctx.reply(
+      "✅ бот создан и запущен"
+    );
   }
 
   // ================= EDIT PROMPT =================
@@ -288,19 +320,55 @@ bot.on("text", async (ctx) => {
 
       console.log(error);
 
-      return ctx.reply("ошибка обновления prompt");
+      return ctx.reply(
+        "ошибка обновления prompt"
+      );
     }
 
-    return ctx.reply("✅ prompt обновлён");
+    return ctx.reply(
+      "✅ prompt обновлён"
+    );
   }
 });
 
-// ================= START =================
+// ================= START BUILDER =================
 bot.launch({
   dropPendingUpdates: true
 });
 
 console.log("BOT BUILDER RUNNING");
+
+// ================= AUTO LAUNCH ALL BOTS =================
+async function autoLaunchBots() {
+
+  const { data, error } = await supabase
+    .from("bots")
+    .select("*");
+
+  if (error) {
+    return console.log(error);
+  }
+
+  for (const botData of data) {
+
+    try {
+
+      await launchBot(botData);
+
+      console.log(
+        `✅ launched: ${botData.name}`
+      );
+
+    } catch (e) {
+
+      console.log(
+        `❌ failed: ${botData.name}`
+      );
+    }
+  }
+}
+
+autoLaunchBots();
 
 // ================= SERVER =================
 app.listen(PORT, () => {
@@ -311,27 +379,39 @@ app.listen(PORT, () => {
   );
 });
 
-//==============RENDER KEEP-ALIVE============
-const axios = require("axios");
-
-const RENDER_URL = process.env.RENDER_URL || "https://ai-chatbot-m5kg.onrender.com";
+// ================= KEEP ALIVE =================
+const RENDER_URL =
+  process.env.RENDER_URL ||
+  "https://ai-chatbot-m5kg.onrender.com";
 
 function isSleepTime() {
+
   const hour = new Date().getHours();
+
   return hour >= 2 && hour < 7;
 }
 
 setInterval(async () => {
 
   if (isSleepTime()) {
-    console.log("🌙 sleep mode (2:00–7:00)");
+
+    console.log(
+      "🌙 sleep mode (2:00–7:00)"
+    );
+
     return;
   }
 
   try {
+
     await axios.get(RENDER_URL);
-    console.log("💓 keepalive 40s");
+
+    console.log(
+      "💓 keepalive 40s"
+    );
+
   } catch (err) {
+
     console.log("ping error");
   }
 
