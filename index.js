@@ -85,9 +85,7 @@ bot.command("newbot", (ctx) => {
     step: "name"
   });
 
-  ctx.reply(
-    "введи имя бота:"
-  );
+  ctx.reply("введи имя бота:");
 });
 
 // ================= CALLBACKS =================
@@ -143,12 +141,6 @@ bot.on("callback_query", async (ctx) => {
             ],
             [
               {
-                text: "✏️ изменить prompt",
-                callback_data: `edit_${id}`
-              }
-            ],
-            [
-              {
                 text: "🚀 запустить",
                 callback_data: `launch_${id}`
               }
@@ -181,6 +173,12 @@ bot.on("callback_query", async (ctx) => {
       {
         reply_markup: {
           inline_keyboard: [
+            [
+              {
+                text: "✏️ изменить prompt",
+                callback_data: `edit_${id}`
+              }
+            ],
             [
               {
                 text: "⬅️ назад",
@@ -225,9 +223,7 @@ bot.on("callback_query", async (ctx) => {
 
     await launchBot(data);
 
-    return ctx.reply(
-      "✅ бот запущен"
-    );
+    return ctx.reply("✅ бот запущен");
   }
 });
 
@@ -246,17 +242,13 @@ bot.on("text", async (ctx) => {
 
     userState.set(ctx.from.id, state);
 
-    return ctx.reply(
-      "теперь отправь токен бота:"
-    );
+    return ctx.reply("теперь отправь токен бота:");
   }
 
   if (state?.step === "token") {
 
     if (!isValidToken(text)) {
-      return ctx.reply(
-        "❌ неверный токен"
-      );
+      return ctx.reply("❌ неверный токен");
     }
 
     const { error } = await supabase
@@ -274,14 +266,10 @@ bot.on("text", async (ctx) => {
 
       console.log(error);
 
-      return ctx.reply(
-        "ошибка создания бота"
-      );
+      return ctx.reply("ошибка создания бота");
     }
 
-    return ctx.reply(
-      "✅ бот создан"
-    );
+    return ctx.reply("✅ бот создан");
   }
 
   // ================= EDIT PROMPT =================
@@ -300,14 +288,10 @@ bot.on("text", async (ctx) => {
 
       console.log(error);
 
-      return ctx.reply(
-        "ошибка обновления prompt"
-      );
+      return ctx.reply("ошибка обновления prompt");
     }
 
-    return ctx.reply(
-      "✅ prompt обновлён"
-    );
+    return ctx.reply("✅ prompt обновлён");
   }
 });
 
