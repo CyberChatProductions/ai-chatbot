@@ -4,35 +4,33 @@ async function describeImage(url) {
 
   try {
 
-    // 1. скачиваем картинку
+    // скачиваем изображение
     const img = await axios.get(url, {
       responseType: "arraybuffer"
     });
 
-    const base64 = Buffer.from(img.data).toString("base64");
-
-    // 2. отправляем в HF
+    // отправляем как бинарник
     const res = await axios.post(
       "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large",
-      {
-        inputs: base64
-      },
+      img.data,
       {
         headers: {
-          Authorization: `Bearer ${process.env.HF_TOKEN || ""}`,
-          "Content-Type": "application/json"
-        }
+          Authorization: `Bearer ${process.env.HF_TOKEN}`,
+          "Content-Type": "application/octet-stream"
+        },
+        timeout: 30000
       }
     );
 
+    // HF иногда отвечает массивом
     if (Array.isArray(res.data)) {
-      return res.data[0]?.generated_text || "не удалось понять изображение";
+      return res.data[0]?.generated_text || null;
     }
 
-    return "vision error";
+    return null;
 
-  } catch (e) {
-    return "не удалось проанализировать изображение";
+  } catch {
+    return null;
   }
 }
 
