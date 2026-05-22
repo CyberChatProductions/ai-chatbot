@@ -46,21 +46,26 @@ async function launchBot(botData) {
         }
 
         // ================= PHOTO =================
-        if (ctx.message.photo) {
+if (ctx.message.photo) {
 
-          const caption =
-            ctx.message.caption || "";
+  const caption = ctx.message.caption || "";
 
-          const file =
-            ctx.message.photo.at(-1);
+  const file = ctx.message.photo.at(-1);
+  const fileLink = await ctx.telegram.getFileLink(file.file_id);
 
-          const fileLink =
-            await ctx.telegram.getFileLink(
-              file.file_id
-            );
+  let visionText = "vision disabled";
 
-          userMessage = `
+  try {
+    visionText = await describeImage(fileLink.href);
+  } catch (e) {
+    console.log("VISION ERROR:", e);
+  }
+
+  userMessage = `
 [PHOTO]
+
+AI VISION:
+${visionText}
 
 caption:
 ${caption || "none"}
@@ -68,51 +73,38 @@ ${caption || "none"}
 url:
 ${fileLink.href}
 `;
-        }
-
+}
         // ================= GIF =================
-        if (ctx.message.animation) {
+const fileLink = await ctx.telegram.getFileLink(
+  ctx.message.animation.file_id
+);
 
-          const caption =
-            ctx.message.caption || "";
+const caption = ctx.message.caption || "";
 
-          const fileLink =
-            await ctx.telegram.getFileLink(
-              ctx.message.animation.file_id
-            );
-
-          userMessage = `
+userMessage = `
 [GIF]
 
 caption:
 ${caption || "none"}
 
+note:
+animated content sent
 url:
 ${fileLink.href}
 `;
-        }
-
         // ================= STICKER =================
-        if (ctx.message.sticker) {
+const s = ctx.message.sticker;
 
-          const s = ctx.message.sticker;
-
-          userMessage = `
+userMessage = `
 [STICKER]
 
-emoji:
-${s.emoji || "none"}
+emoji: ${s.emoji || "none"}
+type: ${s.is_animated ? "animated" : "static"}
+pack: ${s.set_name || "unknown"}
 
-set:
-${s.set_name || "unknown"}
-
-animated:
-${s.is_animated}
+note:
+user reacted with sticker
 `;
-        }
-
-        const text = userMessage;
-
         // ================= GROUP LOGIC =================
         const isGroup =
           ctx.chat.type.includes("group");
