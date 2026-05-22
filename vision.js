@@ -4,12 +4,14 @@ async function describeImage(url) {
 
   try {
 
-    const image = await axios.get(url, {
+    // 1. скачиваем картинку
+    const img = await axios.get(url, {
       responseType: "arraybuffer"
     });
 
-    const base64 = Buffer.from(image.data).toString("base64");
+    const base64 = Buffer.from(img.data).toString("base64");
 
+    // 2. отправляем в HF
     const res = await axios.post(
       "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large",
       {
