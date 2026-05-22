@@ -44,41 +44,52 @@ async function launchBot(botData) {
         userMessage = ctx.message.text;
       }
 
-      // ================= PHOTO + VISION =================
-      if (ctx.message.photo) {
+  // ================= PHOTO =================
+  if (ctx.message.photo) {
 
-        const caption = ctx.message.caption || "";
+    const caption = ctx.message.caption || "";
 
-        const file = ctx.message.photo.at(-1);
-        const fileLink = await ctx.telegram.getFileLink(file.file_id);
+    const file = ctx.message.photo.at(-1);
 
-        let visionText = "no vision";
+    const fileLink = await ctx.telegram.getFileLink(
+      file.file_id
+    );
 
-        try {
-          visionText = await describeImage(fileLink.href);
+    let visionText = null;
 
-          if (!visionText || typeof visionText !== "string") {
-            visionText = "image not recognized";
-          }
+    try {
 
-        } catch {
-          visionText = "vision error";
-        }
+      visionText = await describeImage(
+        fileLink.href
+      );
 
-        userMessage = `
-[PHOTO]
+    } catch {}
 
-AI VISION:
-${visionText}
+    userMessage = `
+  [PHOTO]
 
-caption:
-${caption || "none"}
+  description:
+  ${visionText || "пользователь отправил изображение"}
 
-url:
-${fileLink.href}
-`;
-      }
+  caption:
+  ${caption || "none"}
+  `;
+  }
 
+  // ================= GIF =================
+  if (ctx.message.animation) {
+
+    const caption = ctx.message.caption || "";
+
+    userMessage = `
+  [GIF]
+
+  user sent animated content
+
+  caption:
+  ${caption || "none"}
+  `;
+  }
       // ================= GIF =================
    if (ctx.message.animation) {
 
