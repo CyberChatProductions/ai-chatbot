@@ -1,35 +1,36 @@
-const fetch = require("node-fetch");
+const axios = require("axios");
 
 async function describeImage(url) {
 
   try {
 
-    const res = await fetch(
+    const image = await axios.get(url, {
+      responseType: "arraybuffer"
+    });
+
+    const base64 = Buffer.from(image.data).toString("base64");
+
+    const res = await axios.post(
       "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large",
       {
-        method: "POST",
+        inputs: base64
+      },
+      {
         headers: {
+          Authorization: `Bearer ${process.env.HF_TOKEN || ""}`,
           "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          inputs: url
-        })
+        }
       }
     );
 
-    const data = await res.json();
-
-    if (Array.isArray(data)) {
-      return data[0]?.generated_text || "не удалось распознать изображение";
+    if (Array.isArray(res.data)) {
+      return res.data[0]?.generated_text || "не удалось понять изображение";
     }
 
     return "vision error";
 
-  } catch (err) {
-
-    console.log("VISION ERROR:", err);
-
-    return "ошибка vision";
+  } catch (e) {
+    return "не удалось проанализировать изображение";
   }
 }
 
