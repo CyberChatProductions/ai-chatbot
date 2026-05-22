@@ -80,25 +80,38 @@ ${fileLink.href}
       }
 
       // ================= GIF =================
-      if (ctx.message.animation) {
+   if (ctx.message.animation) {
 
-        const caption = ctx.message.caption || "";
+  const caption = ctx.message.caption || "";
 
-        const fileLink = await ctx.telegram.getFileLink(
-          ctx.message.animation.file_id
-        );
+  const fileLink = await ctx.telegram.getFileLink(
+    ctx.message.animation.file_id
+  );
 
-        userMessage = `
+  let gifVision = "no vision";
+
+  try {
+    gifVision = await describeGif(fileLink.href);
+  } catch {
+    gifVision = "GIF not analyzed";
+  }
+
+  userMessage = `
 [GIF]
+
+VISION:
+${gifVision}
 
 caption:
 ${caption || "none"}
 
+note:
+animated video content
+
 url:
 ${fileLink.href}
 `;
-      }
-
+}
       // ================= STICKER =================
       if (ctx.message.sticker) {
 
