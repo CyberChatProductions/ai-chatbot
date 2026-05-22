@@ -8,6 +8,7 @@ const supabase = createClient(
 );
 
 const launchedBots = new Map();
+const chatMemory = new Map();
 
 // ================= LAUNCH =================
 async function launchBot(botData) {
@@ -21,117 +22,183 @@ async function launchBot(botData) {
   console.log(`🤖 @${me.username} launched`);
 
   // ================= HANDLER =================
-  bot.on(["text", "photo", "animation", "sticker"], async (ctx) => {
+  bot.on(
+    ["text", "photo", "animation", "sticker"],
+    async (ctx) => {
 
-    try {
+      try {
 
-      // ================= CHECK ENABLED =================
-      const { data: fresh } = await supabase
-        .from("bots")
-        .select("enabled, prompt")
-        .eq("id", botData.id)
-        .single();
+        // ================= CHECK ENABLED =================
+        const { data: fresh } = await supabase
+          .from("bots")
+          .select("enabled, prompt")
+          .eq("id", botData.id)
+          .single();
 
-      if (!fresh?.enabled) return;
+        if (!fresh?.enabled) return;
 
-      let userMessage = "";
+        let userMessage = "";
 
-      // ================= TEXT =================
-      if (ctx.message.text) {
-        userMessage = ctx.message.text;
-      }
+        // ================= TEXT =================
+        if (ctx.message.text) {
+          userMessage = ctx.message.text;
+        }
 
-      // ================= PHOTO =================
-      if (ctx.message.photo) {
+        // ================= PHOTO =================
+        if (ctx.message.photo) {
 
-        const caption = ctx.message.caption || "";
+          const caption =
+            ctx.message.caption || "";
 
-        const file = ctx.message.photo.at(-1);
-        const fileLink = await ctx.telegram.getFileLink(file.file_id);
+          const file =
+            ctx.message.photo.at(-1);
 
-        userMessage = `
+          const fileLink =
+            await ctx.telegram.getFileLink(
+              file.file_id
+            );
+
+          userMessage = `
 [PHOTO]
-caption: ${caption || "none"}
-url: ${fileLink.href}
+
+caption:
+${caption || "none"}
+
+url:
+${fileLink.href}
 `;
-      }
+        }
 
-      // ================= GIF =================
-      if (ctx.message.animation) {
+        // ================= GIF =================
+        if (ctx.message.animation) {
 
-        const caption = ctx.message.caption || "";
+          const caption =
+            ctx.message.caption || "";
 
-        const fileLink = await ctx.telegram.getFileLink(
-          ctx.message.animation.file_id
+          const fileLink =
+            await ctx.telegram.getFileLink(
+              ctx.message.animation.file_id
+            );
+
+          userMessage = `
+[GIF]
+
+caption:
+${caption || "none"}
+
+url:
+${fileLink.href}
+`;
+        }
+
+        // ================= STICKER =================
+        if (ctx.message.sticker) {
+
+          const s = ctx.message.sticker;
+
+          userMessage = `
+[STICKER]
+
+emoji:
+${s.emoji || "none"}
+
+set:
+${s.set_name || "unknown"}
+
+animated:
+${s.is_animated}
+`;
+        }
+
+        const text = userMessage;
+
+        // ================= GROUP LOGIC =================
+        const isGroup =
+          ctx.chat.type.includes("group");
+
+        const isReply =
+          ctx.message.reply_to_message
+            ?.from?.username === me.username;
+
+        const isMention =
+          text.toLowerCase().includes(
+            `@${me.username.toLowerCase()}`
+          );
+
+        const randomReply =
+          Math.random() < 0.15;
+
+        if (
+          isGroup &&
+          !isReply &&
+          !isMention &&
+          !randomReply
+        ) {
+          return;
+        }
+
+        // ================= MEMORY =================
+        const memoryKey =
+          `${botData.id}_${ctx.chat.id}`;
+
+        if (!chatMemory.has(memoryKey)) {
+          chatMemory.set(memoryKey, []);
+        }
+
+        const memory =
+          chatMemory.get(memoryKey);
+
+        memory.push({
+          role: "user",
+          content: text
+        });
+
+        // ~15 сообщений
+        if (memory.length > 30) {
+          memory.shift();
+        }
+
+        await ctx.sendChatAction("typing");
+
+        // ================= AI =================
+        const reply = await askGroq(
+          memory,
+
+          `
+${fresh.prompt || ""}
+`
         );
 
-        userMessage = `
-[GIF]
-caption: ${caption || "none"}
-url: ${fileLink.href}
-`;
+        // ================= SAVE MEMORY =================
+        memory.push({
+          role: "assistant",
+          content: reply
+        });
+
+        if (memory.length > 30) {
+          memory.shift();
+        }
+
+        await ctx.reply(reply);
+
+      } catch (err) {
+
+        console.log(
+          "RUNTIME ERROR:",
+          err
+        );
       }
-
-      // ================= STICKER =================
-      if (ctx.message.sticker) {
-
-        const s = ctx.message.sticker;
-
-        userMessage = `
-[STICKER]
-emoji: ${s.emoji || "none"}
-set: ${s.set_name || "unknown"}
-animated: ${s.is_animated}
-file_id: ${s.file_id}
-`;
-      }
-
-      const text = userMessage;
-
-      // ================= GROUP LOGIC =================
-      const isGroup = ctx.chat.type.includes("group");
-
-      const isReply =
-        ctx.message.reply_to_message?.from?.username === me.username;
-
-      const isMention =
-        text.toLowerCase().includes(`@${me.username.toLowerCase()}`);
-
-      const randomReply = Math.random() < 0.15;
-
-      if (isGroup && !isReply && !isMention && !randomReply) {
-        return;
-      }
-
-      await ctx.sendChatAction("typing");
-
-      // ================= AI =================
-      const reply = await askGroq(
-        text,
-        `
-${fresh.prompt || ""}
-
-ВАЖНО:
-- отвечай как живой человек
-- ответы должны быть средними по длине
-- не делай огромные тексты
-- будь естественным
-- учитывай что это Telegram чат
-`
-      );
-
-      await ctx.reply(reply);
-
-    } catch (err) {
-      console.log("RUNTIME ERROR:", err);
     }
-  });
+  );
 
   bot.launch({
     dropPendingUpdates: true
   });
 
-  launchedBots.set(botData.token, bot);
+  launchedBots.set(
+    botData.token,
+    bot
+  );
 }
 
 module.exports = {
