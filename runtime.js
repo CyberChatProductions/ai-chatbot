@@ -1,6 +1,7 @@
 const { Telegraf } = require("telegraf");
 const { createClient } = require("@supabase/supabase-js");
 const askGroq = require("./groq");
+const describeImage = require("./vision");
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
