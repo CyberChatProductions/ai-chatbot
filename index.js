@@ -380,8 +380,6 @@ app.listen(PORT, () => {
 });
 
 // ================= KEEP ALIVE =================
-const axios = require("axios");
-
 const RENDER_URL =
   process.env.RENDER_URL ||
   "https://ai-chatbot-m5kg.onrender.com";
