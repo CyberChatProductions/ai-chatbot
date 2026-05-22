@@ -386,7 +386,6 @@ const RENDER_URL =
   process.env.RENDER_URL ||
   "https://ai-chatbot-m5kg.onrender.com";
 
-// ================= KEEP ALIVE =================
 setInterval(async () => {
 
   try {
